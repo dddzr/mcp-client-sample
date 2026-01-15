@@ -1,0 +1,46 @@
+spring.application.name=mcpclient
+
+# 로깅 설정 (디버깅용)
+logging.level.com.example.mcpclient=DEBUG
+logging.level.org.springframework.boot.context.properties=DEBUG
+
+# Gemini API 설정
+# 방법 1: API Key 사용 (개발/로컬) - 이 방법을 사용하려면 아래 주석을 해제하고 방법 2를 주석 처리하세요
+# spring.ai.google.genai.api-key={your-api-key}
+# spring.ai.google.genai.chat.options.model=gemini-2.5-flash
+
+# 방법 2: Vertex AI 사용 (credentials.json 필요) (운영/보안) - 현재 활성화됨
+spring.ai.vertex.ai.gemini.project-id={your-project-id}
+spring.ai.vertex.ai.gemini.location=us-central1
+spring.ai.vertex.ai.gemini.chat.options.model=gemini-2.5-flash
+spring.ai.vertex.ai.gemini.credentials.location=classpath:credentials.json
+#project-name=projects/663801961196
+
+# MCP 서버 등록 설정 - stdio 예제
+# mcp.servers.example-server.command=node
+# mcp.servers.example-server.args[0]=/path/to/server.js
+# mcp.servers.example-server.cwd=/path/to/project
+# mcp.servers.example-server.url=http://localhost:8080/mcp
+# mcp.servers.example-server.env.API_KEY={your-api-key}
+# mcp.servers.example-server.headers.Authorization=Bearer token
+
+# MCP 서버 등록 설정 - stdio MCP 서버 샘플
+# MCP 서버 실행 명령어 (Java 실행)
+mcp.servers.mcp-server-sample.command=java
+
+# 실행 인자 (jar 파일 경로와 stdio 모드 옵션)
+mcp.servers.mcp-server-sample.args[0]=-jar
+mcp.servers.mcp-server-sample.args[1]=C:\Users\User\Documents\projects\mcp-server-sample\target\mcp-server-sample-0.0.1-SNAPSHOT.jar
+mcp.servers.mcp-server-sample.args[2]=--mcp-stdio
+
+# 작업 디렉토리 (프로젝트 루트)
+mcp.servers.mcp-server-sample.cwd=C:\Users\User\Documents\projects\mcp-server-sample
+
+# URL은 stdio 모드에서는 사용하지 않습니다 (주석 처리)
+# mcp.servers.mcp-server-sample.url=...
+
+# 환경 변수 (포털 API URL 설정 - 선택사항)
+mcp.servers.mcp-server-sample.env.PORTAL_API_BASE_URL=http://localhost:8081/api/portal
+
+# Headers는 stdio 모드에서는 사용하지 않습니다 (주석 처리)
+# mcp.servers.mcp-server-sample.headers.Authorization=...
