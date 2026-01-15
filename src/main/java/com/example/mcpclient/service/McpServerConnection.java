@@ -3,6 +3,8 @@ package com.example.mcpclient.service;
 import com.example.mcpclient.config.McpServerConfig;
 import com.example.mcpclient.model.McpRequest;
 import com.example.mcpclient.model.McpResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -178,8 +180,45 @@ public class McpServerConnection {
             throw new IOException("No valid JSON response from server " + serverName + " after " + maxAttempts + " attempts");
         }
 
-        logger.debug("Parsing JSON response from {}: {}", serverName, responseLine);
-        return objectMapper.readValue(responseLine, McpResponse.class);
+        // MCP 서버 원본 응답 로그 출력
+        logger.info("=== MCP Server Raw Response from {} ===", serverName);
+        logger.info("Raw response line: {}", responseLine);
+        
+        // MCP 서버가 배열을 반환할 수 있으므로 처리
+        McpResponse parsedResponse;
+        try {
+            // 먼저 JsonNode로 파싱하여 배열인지 확인
+            JsonNode jsonNode = objectMapper.readTree(responseLine);
+            
+            if (jsonNode.isArray()) {
+                // 배열인 경우 첫 번째 요소를 사용
+                logger.info("Response is an array (size: {}), using first element", jsonNode.size());
+                if (jsonNode.size() == 0) {
+                    throw new IOException("Empty array response from server " + serverName);
+                }
+                parsedResponse = objectMapper.treeToValue(jsonNode.get(0), McpResponse.class);
+            } else {
+                // 단일 객체인 경우 그대로 파싱
+                logger.debug("Response is a single object");
+                parsedResponse = objectMapper.treeToValue(jsonNode, McpResponse.class);
+            }
+            
+            // 파싱된 응답 로그 출력
+            logger.info("=== MCP Server Parsed Response from {} ===", serverName);
+            logger.info("Parsed response - ID: {}, JSON-RPC: {}", parsedResponse.getId(), parsedResponse.getJsonrpc());
+            if (parsedResponse.getError() != null) {
+                logger.info("Parsed response - Error: code={}, message={}", 
+                    parsedResponse.getError().getCode(), parsedResponse.getError().getMessage());
+            } else {
+                logger.info("Parsed response - Result: {}", objectMapper.writeValueAsString(parsedResponse.getResult()));
+            }
+            logger.info("=== End of MCP Server Response ===");
+            
+            return parsedResponse;
+        } catch (JsonProcessingException e) {
+            logger.error("Failed to parse JSON response from {}: {}", serverName, responseLine, e);
+            throw new IOException("Failed to parse JSON response from server " + serverName + ": " + e.getMessage(), e);
+        }
     }
 
     /**

@@ -5,10 +5,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * Gemini AI 모델 직접 호출 서비스
+ * Spring AI ChatClient를 사용하여 Gemini에 직접 요청을 전송하고 응답을 반환
+ * 단일 메시지 또는 메시지 리스트를 처리
+ */
 @Service
 public class GeminiService {
     
@@ -86,20 +92,148 @@ public class GeminiService {
             logger.debug("Generated response: {}", response);
             return response;
         } catch (Exception e) {
-            logger.error("Failed to generate response for messages", e);
-            // 더 자세한 에러 정보 로깅
-            Throwable cause = e;
-            int depth = 0;
-            while (cause != null && depth < 5) {
-                logger.error("Error at depth {}: {} - {}", depth, cause.getClass().getSimpleName(), cause.getMessage());
-                if (cause.getCause() != null && cause.getCause() != cause) {
-                    cause = cause.getCause();
-                    depth++;
-                } else {
-                    break;
-                }
-            }
-            throw new RuntimeException("Failed to generate content: " + e.getMessage(), e);
+            return handleGeminiException(e, "Failed to generate response for messages");
         }
     }
+    
+    /**
+     * ChatClient를 사용하여 메시지 리스트로 응답 생성 (도구 등록 가능)
+     * McpChatService에서 도구가 등록된 ChatClient를 사용할 때 호출
+     */
+    public String generateResponseWithChatClient(ChatClient chatClient, List<Message> messages) {
+        if (chatClient == null) {
+            throw new IllegalArgumentException("ChatClient cannot be null");
+        }
+        if (messages == null || messages.isEmpty()) {
+            throw new IllegalArgumentException("Messages cannot be null or empty");
+        }
+        
+        long startTime = System.currentTimeMillis();
+        try {
+            logger.info("=== Starting Gemini API call ===");
+            
+            String response = chatClient.prompt()
+                    .messages(messages)
+                    .call()
+                    .content();
+            
+            long afterCall = System.currentTimeMillis();
+            long elapsed = afterCall - startTime;
+            logger.info("=== Gemini API call completed in {}ms ===", elapsed);
+            // logger.debug("Generated response length: {} chars", response != null ? response.length() : 0);
+
+            return response;
+        } catch (Exception e) {
+            return handleGeminiException(e, "Failed to generate response with custom ChatClient");
+        }
+    }
+    
+    /**
+     * Gemini API 예외 처리 공통 메서드
+     */
+    private String handleGeminiException(Exception e, String errorContext) {
+        // Gemini API 할당량 초과 에러(429) 처리
+        if (isQuotaExceededError(e)) {
+            String message = extractQuotaErrorMessage(e);
+            // 할당량 초과는 정상적인 비즈니스 로직이므로 스택 트레이스 로깅하지 않음
+            logger.warn("Gemini API quota exceeded - {}", message);
+            return message;
+        }
+        
+        // 할당량 초과가 아닌 에러는 상세 로깅
+        logger.error(errorContext, e);
+        throw new RuntimeException("Failed to generate content: " + e.getMessage(), e);
+    }
+    
+    /**
+     * 할당량 초과 예외 정보에서 핵심 정보 추출
+     * Free tier은 그냥 하루에 20번 제한임.
+     */
+    private String extractQuotaErrorMessage(Exception e) {
+        // Throwable cause = e.getCause();
+        // if (cause == null) {
+        //     return "Quota exceeded";
+        // }
+        // String message = cause.getMessage();
+
+        // // "Please retry in X.XXs." 패턴 찾기
+        // java.util.regex.Pattern retryPattern = java.util.regex.Pattern.compile(
+        //     "retry\\s+in\\s+(\\d+(?:\\.\\d+)?)\\s*s\\.?", 
+        //     java.util.regex.Pattern.CASE_INSENSITIVE
+        // );
+        // java.util.regex.Matcher matcher = retryPattern.matcher(message);
+        // if (matcher.find()) {
+        //     try {
+        //         double retrySeconds = Double.parseDouble(matcher.group(1));
+        //         return String.format("Quota exceeded, retry in %.1fs", retrySeconds);
+        //     } catch (NumberFormatException ex) {
+        //         return "Quota exceeded";
+        //     }
+        // }
+        
+        // // "limit: X" 패턴 찾기
+        // java.util.regex.Pattern limitPattern = java.util.regex.Pattern.compile(
+        //     "limit\\s*:\\s*(\\d+)", 
+        //     java.util.regex.Pattern.CASE_INSENSITIVE
+        // );
+        // matcher = limitPattern.matcher(message);
+        // if (matcher.find()) {
+        //     return String.format("Quota exceeded (limit: %s)", matcher.group(1));
+        // }
+        
+        return "Quota exceeded";
+    }
+    
+    /**
+     * 할당량 초과 에러인지 확인
+     */
+    public boolean isQuotaExceededError(Exception e) {
+        // 예외 메시지에서 할당량 관련 키워드 확인
+        String errorMessage = e.getMessage();
+        if (errorMessage != null) {
+            String lowerMessage = errorMessage.toLowerCase();
+            if (lowerMessage.contains("quota") || 
+                lowerMessage.contains("429") || 
+                lowerMessage.contains("rate limit") ||
+                lowerMessage.contains("exceeded") ||
+                lowerMessage.contains("free_tier_requests")) {
+                return true;
+            }
+        }
+        // 예외 클래스 이름 확인
+        String exceptionClassName = e.getClass().getName();
+        if (exceptionClassName.contains("ClientException") || exceptionClassName.contains("429")) {
+            // ClientException이고 메시지에 429 관련 내용이 있으면 할당량 초과로 판단
+            if (errorMessage != null && errorMessage.contains("429")) {
+                return true;
+            }
+        }
+        
+        // 원인 예외도 확인
+        Throwable cause = e.getCause();
+        if (cause != null && cause != e) {
+            String causeMessage = cause.getMessage();
+            if (causeMessage != null) {
+                String lowerCauseMessage = causeMessage.toLowerCase();
+                if (lowerCauseMessage.contains("quota") || 
+                    lowerCauseMessage.contains("429") || 
+                    lowerCauseMessage.contains("rate limit") ||
+                    lowerCauseMessage.contains("exceeded") ||
+                    lowerCauseMessage.contains("free_tier_requests")) {
+                    return true;
+                }
+            }
+            
+            // 원인 예외 클래스 이름 확인
+            String causeClassName = cause.getClass().getName();
+            if (causeClassName.contains("ClientException")) {
+                if (causeMessage != null && causeMessage.contains("429")) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
 }

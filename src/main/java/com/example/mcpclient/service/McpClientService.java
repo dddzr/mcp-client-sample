@@ -6,6 +6,11 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+/**
+ * MCP 프로토콜 요청 처리 서비스
+ * MCP 프로토콜 메서드(chat/completion, tools/list, tools/call)를 처리하고
+ * GeminiService를 통해 실제 AI 모델 호출을 수행
+ */
 @Service
 public class McpClientService {
     

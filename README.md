@@ -80,8 +80,9 @@ mcp:
 
 ### 방법 1: curl 명령어
 ```bash
-curl -X POST "http://localhost:8080/mcp/servers/mcp-server-sample/chat" \
+curl -X POST "http://localhost:8080/mcp/chat/mcp-server-sample" \
   -H "Content-Type: application/json; charset=UTF-8" \
+  -H "Cookie: SESSIONID=796BAFB973B32658830B2CB822834C7B" \
   -d '{"messages":[{"role":"user","content":"Please show me the notice list"}]}'
 ```
 
@@ -89,8 +90,9 @@ curl -X POST "http://localhost:8080/mcp/servers/mcp-server-sample/chat" \
 ```bash
 # 1. request-notice-list.json 파일 수정
 # 2. 파일을 사용하여 요청
-curl -X POST "http://localhost:8080/mcp/servers/mcp-server-sample/chat" \
+curl -X POST "http://localhost:8080/mcp/chat/mcp-server-sample" \
   -H "Content-Type: application/json; charset=UTF-8" \
-  --max-time 30 \
+  -H "Cookie: SESSIONID=959DB8AD2FC330C8D1AB45A453EB9372" \
+  --max-time 40 \
   --data-binary @request-notice-list.json
 ```
