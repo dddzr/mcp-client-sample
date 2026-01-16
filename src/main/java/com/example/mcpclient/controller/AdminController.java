@@ -1,8 +1,9 @@
 package com.example.mcpclient.controller;
 
+import com.example.mcpclient.model.ChatMessage;
 import com.example.mcpclient.model.McpRequest;
 import com.example.mcpclient.model.McpResponse;
-import com.example.mcpclient.service.McpClientService;
+import com.example.mcpclient.service.GeminiService;
 import com.example.mcpclient.service.McpServerConnectionInterface;
 import com.example.mcpclient.service.McpServerRegistry;
 import org.slf4j.Logger;
@@ -23,15 +24,15 @@ import java.util.Map;
 public class AdminController {
     
     private static final Logger logger = LoggerFactory.getLogger(AdminController.class);
-    private final McpClientService mcpClientService;
+    private final GeminiService geminiService;
     private final McpServerRegistry serverRegistry;
     private final Environment environment;
     
     public AdminController(
-            McpClientService mcpClientService,
+            GeminiService geminiService,
             McpServerRegistry serverRegistry,
             Environment environment) {
-        this.mcpClientService = mcpClientService;
+        this.geminiService = geminiService;
         this.serverRegistry = serverRegistry;
         this.environment = environment;
     }
@@ -95,31 +96,21 @@ public class AdminController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Messages are required"));
             }
             
-            // Gemini 직접 호출
-            McpRequest mcpRequest = new McpRequest();
-            mcpRequest.setMethod("chat/completion");
-            mcpRequest.setParams(chatRequest);
-            mcpRequest.setId(String.valueOf(System.currentTimeMillis()));
-            
-            McpResponse response = mcpClientService.processRequest(mcpRequest);
-            logger.info("Gemini response: {}", response);
-            
-            // 에러가 있으면 에러 반환
-            if (response.getError() != null) {
-                return ResponseEntity.status(500).body(Map.of(
-                    "error", "Gemini error",
-                    "code", response.getError().getCode(),
-                    "message", response.getError().getMessage()
-                ));
+            // ChatMessage 리스트로 변환
+            List<ChatMessage> chatMessages = new java.util.ArrayList<>();
+            for (Map<String, Object> msg : messages) {
+                String role = (String) msg.get("role");
+                String content = (String) msg.get("content");
+                chatMessages.add(new ChatMessage(role, content));
             }
             
-            // Gemini 응답 내용 추출
-            String geminiResponse = extractGeminiResponse(response);
+            // Gemini 직접 호출
+            String response = geminiService.generateResponse(chatMessages);
+            logger.info("Gemini response: {}", response);
             
-            // 원본 응답과 파싱된 응답 모두 반환
             return ResponseEntity.ok(Map.of(
-                "geminiResponse", geminiResponse != null ? geminiResponse : "No response",
-                "fullResponse", response
+                "role", "assistant",
+                "content", response != null ? response : "No response"
             ));
         } catch (Exception e) {
             logger.error("Error calling Gemini", e);
@@ -177,44 +168,5 @@ public class AdminController {
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("MCP Client is running");
-    }
-    
-    /**
-     * McpResponse에서 Gemini 응답 텍스트 추출
-     */
-    private String extractGeminiResponse(McpResponse response) {
-        try {
-            if (response.getResult() == null) {
-                return null;
-            }
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> result = response.getResult() instanceof Map ? 
-                (Map<String, Object>) response.getResult() : null;
-            
-            if (result == null) {
-                return null;
-            }
-            
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> choices = (List<Map<String, Object>>) result.get("choices");
-            
-            if (choices == null || choices.isEmpty()) {
-                return null;
-            }
-            
-            Map<String, Object> firstChoice = choices.get(0);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
-            
-            if (message == null) {
-                return null;
-            }
-            
-            return (String) message.get("content");
-        } catch (Exception e) {
-            logger.error("Error extracting Gemini response", e);
-            return null;
-        }
     }
 }

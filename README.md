@@ -49,7 +49,6 @@ src/main/java/com/example/mcpclient/
 └── service/                              # 비즈니스 로직
     ├── GeminiService.java                # Gemini API 직접 호출 서비스
     ├── McpChatService.java               # MCP 서버를 통한 채팅 서비스 (세션 관리 포함)
-    ├── McpClientService.java             # MCP 프로토콜 요청 처리 서비스
     ├── McpServerRegistry.java            # MCP 서버 등록/관리 (도구 목록 캐싱, stdio/SSE 공통)
     ├── McpServerConnectionInterface.java # 통신 방식 추상화 인터페이스 (stdio/SSE 공통)
     ├── McpServerStdioConnection.java     # stdio 방식 MCP 서버 통신 (stdio 전용)
