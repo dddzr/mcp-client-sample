@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 서버 등록/해제 관리
@@ -26,14 +27,21 @@ public class McpServerRegistry {
     
     private static final Logger logger = LoggerFactory.getLogger(McpServerRegistry.class);
     private final McpServerConfig serverConfig;
-    private final McpServerConnection serverConnection;
+    private final McpServerStdioConnection stdioConnection;
+    private final McpServerSseConnection sseConnection;
+    // 서버별 연결 객체 저장
+    private final Map<String, McpServerConnectionInterface> serverConnections = new ConcurrentHashMap<>();
     private final Map<String, McpServerConfig.McpServerInfo> registeredServers = new HashMap<>();
     // 서버별 도구 목록 저장
     private final Map<String, List<Map<String, Object>>> serverTools = new HashMap<>();
 
-    public McpServerRegistry(McpServerConfig serverConfig, McpServerConnection serverConnection) {
+    public McpServerRegistry(
+            McpServerConfig serverConfig, 
+            McpServerStdioConnection stdioConnection,
+            McpServerSseConnection sseConnection) {
         this.serverConfig = serverConfig;
-        this.serverConnection = serverConnection;
+        this.stdioConnection = stdioConnection;
+        this.sseConnection = sseConnection;
     }
 
     @PostConstruct
@@ -50,8 +58,14 @@ public class McpServerRegistry {
             for (Map.Entry<String, McpServerConfig.McpServerInfo> entry : registeredServers.entrySet()) {
                 try {
                     String serverName = entry.getKey();
-                    serverConnection.connectServer(serverName, entry.getValue());
-                    logger.info("Auto-connected MCP server: {}", serverName);
+                    McpServerConfig.McpServerInfo serverInfo = entry.getValue();
+                    
+                    // 통신 방식에 따라 적절한 연결 객체 선택
+                    McpServerConnectionInterface connection = getConnectionForServer(serverInfo);
+                    connection.connectServer(serverName, serverInfo);
+                    serverConnections.put(serverName, connection);
+                    
+                    logger.info("🔗 Auto-connected MCP server: {} (type: {})", serverName, serverInfo.getType());
                     
                     // 서버 연결 후 도구 목록 자동으로 가져오기
                     fetchToolsFromServer(serverName);
@@ -68,7 +82,25 @@ public class McpServerRegistry {
     public void cleanup() {
         // 애플리케이션 종료 시 모든 서버 연결 해제
         for (String serverName : registeredServers.keySet()) {
-            serverConnection.disconnectServer(serverName);
+            McpServerConnectionInterface connection = serverConnections.get(serverName);
+            if (connection != null) {
+                connection.disconnectServer(serverName);
+            }
+        }
+    }
+
+    /**
+     * 통신 방식에 따라 적절한 연결 객체 반환
+     */
+    private McpServerConnectionInterface getConnectionForServer(McpServerConfig.McpServerInfo serverInfo) {
+        String type = serverInfo.getType();
+        if (type == null || type.isEmpty() || "stdio".equalsIgnoreCase(type)) {
+            return stdioConnection;
+        } else if ("sse".equalsIgnoreCase(type)) {
+            return sseConnection;
+        } else {
+            logger.warn("Unknown connection type: {}, using stdio", type);
+            return stdioConnection;
         }
     }
 
@@ -76,15 +108,18 @@ public class McpServerRegistry {
      * MCP 서버 등록 해제 및 연결 종료
      */
     public void unregisterServer(String serverName) {
-        serverConnection.disconnectServer(serverName);
+        McpServerConnectionInterface connection = serverConnections.remove(serverName);
+        if (connection != null) {
+            connection.disconnectServer(serverName);
+        }
         registeredServers.remove(serverName);
     }
     
     /**
      * MCP 서버 연결 객체 반환
      */
-    public McpServerConnection getServerConnection() {
-        return serverConnection;
+    public McpServerConnectionInterface getServerConnection(String serverName) {
+        return serverConnections.get(serverName);
     }
 
     /**
@@ -113,12 +148,18 @@ public class McpServerRegistry {
      */
     private void fetchToolsFromServer(String serverName) {
         try {
+            McpServerConnectionInterface connection = serverConnections.get(serverName);
+            if (connection == null) {
+                logger.error("No connection found for server: {}", serverName);
+                return;
+            }
+            
             McpRequest request = new McpRequest();
             request.setMethod("tools/list");
             request.setParams(new HashMap<>());
             request.setId("tools-list-" + System.currentTimeMillis());
             
-            McpResponse response = serverConnection.sendRequest(serverName, request);
+            McpResponse response = connection.sendRequest(serverName, request);
             
             if (response.getError() == null && response.getResult() != null) {
                 @SuppressWarnings("unchecked")
@@ -163,7 +204,12 @@ public class McpServerRegistry {
      */
     public void registerServer(String serverName, McpServerConfig.McpServerInfo serverInfo) throws IOException {
         registeredServers.put(serverName, serverInfo);
-        serverConnection.connectServer(serverName, serverInfo);
+        
+        // 통신 방식에 따라 적절한 연결 객체 선택
+        McpServerConnectionInterface connection = getConnectionForServer(serverInfo);
+        connection.connectServer(serverName, serverInfo);
+        serverConnections.put(serverName, connection);
+        
         fetchToolsFromServer(serverName);
     }
 }

@@ -13,7 +13,7 @@ import java.util.Map;
  * application.yml에서 MCP 서버 정보 로드
  * 서버별 command, args, cwd, url, env, headers 설정을 지원
  */
-@ConfigurationProperties(prefix = "mcp")
+@ConfigurationProperties(prefix = "mcp") // application.yml의 mcp prefix 아래 설정을 자동으로 바인딩
 public class McpServerConfig {
     
     private static final Logger logger = LoggerFactory.getLogger(McpServerConfig.class);
@@ -45,10 +45,11 @@ public class McpServerConfig {
     }
 
     public static class McpServerInfo {
+        private String type = "stdio"; // "stdio" or "sse"
         private String command;
         private String[] args;
         private String cwd;
-        private String url;
+        private String url; // SSE 방식일 때 필수
         private Map<String, String> env = new HashMap<>();
         private Map<String, String> headers = new HashMap<>();
 
@@ -98,6 +99,14 @@ public class McpServerConfig {
 
         public void setHeaders(Map<String, String> headers) {
             this.headers = headers;
+        }
+        
+        public String getType() {
+            return type;
+        }
+        
+        public void setType(String type) {
+            this.type = type;
         }
     }
 }

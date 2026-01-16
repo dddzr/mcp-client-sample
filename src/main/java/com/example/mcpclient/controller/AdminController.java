@@ -3,6 +3,7 @@ package com.example.mcpclient.controller;
 import com.example.mcpclient.model.McpRequest;
 import com.example.mcpclient.model.McpResponse;
 import com.example.mcpclient.service.McpClientService;
+import com.example.mcpclient.service.McpServerConnectionInterface;
 import com.example.mcpclient.service.McpServerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,8 +55,14 @@ public class AdminController {
             }
             
             // MCP 서버로 요청 전달
-            McpResponse response = serverRegistry.getServerConnection()
-                    .sendRequest(serverName, request);
+            McpServerConnectionInterface connection = serverRegistry.getServerConnection(serverName);
+            if (connection == null) {
+                return ResponseEntity.status(500).body(Map.of(
+                    "error", "Server not connected",
+                    "message", "No connection found for server: " + serverName
+                ));
+            }
+            McpResponse response = connection.sendRequest(serverName, request);
             logger.info("Response from server {}: {}", serverName, response);
             return ResponseEntity.ok(response);
         } catch (IllegalStateException e) {

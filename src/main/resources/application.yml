@@ -1,0 +1,66 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: mcpclient
+  # HTTP 인코딩 설정
+  http:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+  # Gemini API 설정
+  # 방법 1: API Key 사용 (개발/로컬)
+  ai:
+    google:
+      genai:
+        api-key: {your-api-key}
+        chat:
+          options:
+            model: gemini-2.5-flash
+  
+  # 방법 2: Vertex AI 사용 (credentials.json 필요) (운영/보안)
+  # ai:
+  #   vertex:
+  #     ai:
+  #       gemini:
+  #         project-id: gen-lang-client-0224531779
+  #         location: us-central1
+  #         chat:
+  #           options:
+  #             model: gemini-pro
+  #         credentials:
+  #           location: classpath:credentials.json
+
+# 로깅 설정 (디버깅용)
+logging:
+  level:
+    com.example.mcpclient: DEBUG
+    org.springframework.boot.context.properties: DEBUG
+    org.springframework.ai: DEBUG
+    org.springframework.ai.google.genai: DEBUG
+    com.google.cloud: DEBUG
+    com.google.genai: DEBUG
+
+# MCP 서버 등록 설정
+mcp:
+  servers:
+    # stdio 방식 예제
+    # mcp-server-sample:
+    #   type: stdio  # "stdio" or "sse" (기본값: stdio)
+    #   command: java
+    #   args:
+    #     - -jar
+    #     - C:\Users\User\Documents\projects\mcp-server-sample\target\mcp-server-sample-0.0.1-SNAPSHOT.jar
+    #     - --mcp-stdio
+    #   cwd: C:\Users\User\Documents\projects\mcp-server-sample
+    #   env:
+    #     PORTAL_API_BASE_URL: http://localhost:8083/api/portal
+    
+    # SSE 방식 예제 (주석 해제하여 사용)
+    mcp-server-sample:
+      type: sse  # SSE 통신 방식
+      url: http://localhost:8080  # MCP 서버의 기본 URL (SSE 방식일 때 필수)
+      # headers:  # 선택사항
+      #   Authorization: Bearer token

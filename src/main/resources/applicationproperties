@@ -1,4 +1,6 @@
+# **미사용. yml을 쓰고있다!!
 spring.application.name=mcpclient
+server.port=8081
 
 # 로깅 설정 (디버깅용)
 logging.level.com.example.mcpclient=DEBUG
@@ -40,7 +42,7 @@ mcp.servers.mcp-server-sample.cwd=C:\Users\User\Documents\projects\mcp-server-sa
 # mcp.servers.mcp-server-sample.url=...
 
 # 환경 변수 (포털 API URL 설정 - 선택사항)
-mcp.servers.mcp-server-sample.env.PORTAL_API_BASE_URL=http://localhost:8081/api/portal
+mcp.servers.mcp-server-sample.env.PORTAL_API_BASE_URL=http://localhost:8083/api/portal
 
 # Headers는 stdio 모드에서는 사용하지 않습니다 (주석 처리)
 # mcp.servers.mcp-server-sample.headers.Authorization=...

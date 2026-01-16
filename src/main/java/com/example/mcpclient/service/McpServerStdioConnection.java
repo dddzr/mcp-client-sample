@@ -18,15 +18,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * MCP 서버와의 stdio 통신 관리
  */
 @Service
-public class McpServerConnection {
+public class McpServerStdioConnection implements McpServerConnectionInterface {
     
-    private static final Logger logger = LoggerFactory.getLogger(McpServerConnection.class);
+    private static final Logger logger = LoggerFactory.getLogger(McpServerStdioConnection.class);
     private final ObjectMapper objectMapper;
     private final Map<String, Process> serverProcesses = new ConcurrentHashMap<>();
     private final Map<String, BufferedReader> serverReaders = new ConcurrentHashMap<>();
     private final Map<String, PrintWriter> serverWriters = new ConcurrentHashMap<>();
 
-    public McpServerConnection(ObjectMapper objectMapper) {
+    public McpServerStdioConnection(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 

@@ -28,7 +28,6 @@ public class McpChatService {
     
     private static final Logger logger = LoggerFactory.getLogger(McpChatService.class);
     private final McpServerRegistry serverRegistry;
-    private final McpServerConnection serverConnection;
     private final ChatModel chatModel;
     private final ObjectMapper objectMapper;
     private final GeminiService geminiService;
@@ -91,12 +90,10 @@ public class McpChatService {
     
     public McpChatService(
             McpServerRegistry serverRegistry,
-            McpServerConnection serverConnection,
             ChatModel chatModel,
             ObjectMapper objectMapper,
             GeminiService geminiService) {
         this.serverRegistry = serverRegistry;
-        this.serverConnection = serverConnection;
         this.chatModel = chatModel;
         this.objectMapper = objectMapper;
         this.geminiService = geminiService;
@@ -112,6 +109,7 @@ public class McpChatService {
      * @return ChatResponse (응답과 세션 ID 포함)
      */
     public ChatResponse chatWithServer(String serverName, List<Map<String, Object>> messages, String sessionId) {
+        logger.info("=== McpChatService.chatWithServer called for server: {} ===", serverName);
         try {
             if (messages == null || messages.isEmpty()) {
                 throw new IllegalArgumentException("Messages cannot be null or empty");
@@ -384,7 +382,11 @@ public class McpChatService {
             logger.info("Sending tools/call request to MCP server: {}", request.getId());
             long startTime = System.currentTimeMillis();
             
-            McpResponse response = serverConnection.sendRequest(serverName, request);
+            McpServerConnectionInterface connection = serverRegistry.getServerConnection(serverName);
+            if (connection == null) {
+                throw new IllegalStateException("No connection found for server: " + serverName);
+            }
+            McpResponse response = connection.sendRequest(serverName, request);
             
             long elapsedTime = System.currentTimeMillis() - startTime;
             logger.info("Received response from MCP server after {}ms", elapsedTime);
