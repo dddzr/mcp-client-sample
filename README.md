@@ -133,7 +133,10 @@ curl -X POST "http://localhost:8081/mcp/chat/mcp-server-sample" \
 # 2. 파일을 사용하여 요청
 curl -X POST "http://localhost:8081/mcp/chat/mcp-server-sample" \
   -H "Content-Type: application/json; charset=UTF-8" \
-  -H "Cookie: SESSIONID=AA559FDDBFA2B874FB48ADC2E4E384D4" \
+  -H "Cookie: SESSIONID=959891C59F9E2B75626FD34975C30E30" \
   --max-time 40 \
   --data-binary @request-notice-list.json
 ```
+### 방법 3: Demo Class 이용
+McpClientDemo.java 파일오픈해서 ▶ 눌리면 실행됨.
+자연어로 요청.
