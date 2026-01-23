@@ -1,5 +1,12 @@
 server:
   port: 8081
+  tomcat:
+    uri-encoding: UTF-8
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 spring:
   application:
@@ -19,7 +26,7 @@ spring:
         chat:
           options:
             model: gemini-2.5-flash
-  
+
   # 방법 2: Vertex AI 사용 (credentials.json 필요) (운영/보안)
   # ai:
   #   vertex:
@@ -35,6 +42,9 @@ spring:
 
 # 로깅 설정 (디버깅용)
 logging:
+  charset:
+    console: UTF-8
+    file: UTF-8
   level:
     com.example.mcpclient: DEBUG
     org.springframework.boot.context.properties: DEBUG
@@ -42,6 +52,10 @@ logging:
     org.springframework.ai.google.genai: DEBUG
     com.google.cloud: DEBUG
     com.google.genai: DEBUG
+
+# 포털 설정
+portal:
+  base-url: http://localhost:8083  # 포털 서버 기본 URL
 
 # MCP 서버 등록 설정
 mcp:

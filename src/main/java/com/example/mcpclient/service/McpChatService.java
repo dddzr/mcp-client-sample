@@ -43,8 +43,8 @@ public class McpChatService {
     // 최대 히스토리 길이 (메모리 관리)
     private static final int MAX_HISTORY_SIZE = 50;
     
-    // 현재 요청의 세션 ID를 ThreadLocal로 저장 (도구 호출 시 사용)
-    private static final ThreadLocal<String> currentSessionId = new ThreadLocal<>();
+    // 현재 요청의 accessToken을 ThreadLocal로 저장 (도구 호출 시 서버 인증용)
+    private static final ThreadLocal<String> currentAccessToken = new ThreadLocal<>();
     
     /**
      * 대화 세션 정보
@@ -105,24 +105,28 @@ public class McpChatService {
      * 
      * @param serverName 서버 이름
      * @param messages 대화 히스토리 (role: user/assistant)
-     * @param sessionId 세션 ID (선택사항, 없으면 자동 생성)
+     * @param sessionId 세션 ID (선택사항, 없으면 자동 생성) - chat history 관리용
+     * @param access_token access_token (선택사항) - 서버 인증용
      * @return ChatResponse (응답과 세션 ID 포함)
      */
-    public ChatResponse chatWithServer(String serverName, List<Map<String, Object>> messages, String sessionId) {
+    public ChatResponse chatWithServer(String serverName, List<Map<String, Object>> messages, String sessionId, String access_token) {
         logger.info("=== McpChatService.chatWithServer called for server: {} ===", serverName);
         try {
             if (messages == null || messages.isEmpty()) {
                 throw new IllegalArgumentException("Messages cannot be null or empty");
             }
             
-            // 세션 ID가 없으면 자동 생성
+            // 세션 ID가 없으면 자동 생성 (chat history 관리용)
             if (sessionId == null || sessionId.trim().isEmpty()) {
                 sessionId = UUID.randomUUID().toString();
                 logger.debug("Auto-generated session ID: {}", sessionId);
             }
             
-            // 현재 요청의 세션 ID를 ThreadLocal에 저장 (도구 호출 시 사용)
-            currentSessionId.set(sessionId);
+            // 현재 요청의 accessToken을 ThreadLocal에 저장 (도구 호출 시 서버 인증용)
+            if (access_token != null && !access_token.trim().isEmpty()) {
+                currentAccessToken.set(access_token);
+                logger.debug("AccessToken set for tool calls");
+            }
             
             try {
                 // 세션별 히스토리 관리
@@ -138,20 +142,59 @@ public class McpChatService {
                 }
             }
             
-            // 세션 히스토리에 새 메시지 추가
+            // 세션 히스토리에 새 메시지 추가 (중복 체크)
             if (lastUserMessage != null) {
-                session.addMessage(lastUserMessage);
+                // 중복 체크: 같은 content를 가진 user 메시지가 이미 있는지 확인
+                List<Map<String, Object>> existingHistory = session.getHistory();
+                boolean isDuplicate = false;
+                String newContent = (String) lastUserMessage.get("content");
+                if (newContent != null) {
+                    for (Map<String, Object> existingMsg : existingHistory) {
+                        if ("user".equalsIgnoreCase((String) existingMsg.get("role"))) {
+                            String existingContent = (String) existingMsg.get("content");
+                            if (newContent.equals(existingContent)) {
+                                isDuplicate = true;
+                                logger.debug("Duplicate user message detected, skipping: {}", newContent.substring(0, Math.min(50, newContent.length())));
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (!isDuplicate) {
+                    session.addMessage(lastUserMessage);
+                    logger.debug("Added new user message to session history");
+                }
             }
             
-            // 세션 히스토리와 새 메시지를 합쳐서 사용
+            // 세션 히스토리 가져오기 (이미 새 메시지가 추가되었거나 중복이므로 그대로 사용)
             List<Map<String, Object>> fullHistory = new ArrayList<>(session.getHistory());
-            // 새 메시지가 히스토리에 없으면 추가 (중복 방지)
-            if (lastUserMessage != null && !fullHistory.contains(lastUserMessage)) {
-                fullHistory.add(lastUserMessage);
-            }
             
             logger.info("=== Starting chat request for server: {}, session: {} ===", serverName, sessionId);
-            logger.info("Session history size: {}, New messages count: {}", session.getHistory().size(), messages.size());
+            logger.info("Session history size: {}, New messages count: {}, Full history size: {}", 
+                session.getHistory().size(), messages.size(), fullHistory.size());
+            
+            // 디버깅: 현재 전송할 히스토리 내용 로그 (user와 assistant 모두 포함 확인)
+            logger.info("=== Full conversation history being sent to Gemini ===");
+            logger.info("Total history messages: {} (should include both user and assistant messages)", fullHistory.size());
+            int userCount = 0;
+            int assistantCount = 0;
+            for (int i = 0; i < fullHistory.size(); i++) {
+                Map<String, Object> msg = fullHistory.get(i);
+                String role = (String) msg.get("role");
+                String content = (String) msg.get("content");
+                if ("user".equalsIgnoreCase(role)) {
+                    userCount++;
+                } else if ("assistant".equalsIgnoreCase(role)) {
+                    assistantCount++;
+                }
+
+                if (content == null) continue;
+
+                logger.info("[{}] {}: {}", i, role, content);
+            }
+            logger.info("History summary: {} user messages, {} assistant messages", userCount, assistantCount);
+            logger.info("=== End of conversation history ===");
             
             // 서버별 ChatClient 가져오기 또는 생성 (MCP 서버의 도구가 Function으로 등록됨)
             logger.debug("Getting or creating ChatClient for server: {}", serverName);
@@ -180,6 +223,8 @@ public class McpChatService {
                 }
             }
             
+            logger.info("Converted {} messages to Spring AI Message format", springAiMessages.size());
+            
             // Gemini에게 대화 히스토리와 함께 요청 전달
             // Gemini가 도구를 선택하면 자동으로 호출됨
             String response;
@@ -205,11 +250,11 @@ public class McpChatService {
             return new ChatResponse(response, sessionId);
             } finally {
                 // ThreadLocal 정리 (메모리 누수 방지)
-                currentSessionId.remove();
+                currentAccessToken.remove();
             }
         } catch (Exception e) {
             // ThreadLocal 정리 (에러 발생 시에도)
-            currentSessionId.remove();
+            currentAccessToken.remove();
             logger.error("=== Error in chatWithServer for server: {} ===", serverName, e);
             if (e.getCause() != null) {
                 logger.error("Root cause: {}", e.getCause().getMessage(), e.getCause());
@@ -245,12 +290,13 @@ public class McpChatService {
         // ChatClient 생성 (도구 등록)
         // ChatClient.Builder에는 defaultToolCallbacks() 메서드 사용
         ChatClient chatClient = ChatClient.builder(chatModel)
+                // .defaultToolContext() // LLM이 tool 호출할 때 넘겨줄 수 있도록 미리 넣어두는 정적 컨텍스트
                 .defaultToolCallbacks(toolCallbacks)
+                .defaultSystem("사용자가 여러 질문을 한 번에 할 수 있습니다. 모든 질문에 대해 완전하고 정확하게 답변해주세요. 도구를 사용한 후에도 남은 질문이 있다면 반드시 답변해주세요.")
                 .build();
-        
+
         chatClientCache.put(serverName, chatClient);
         logger.info("Created ChatClient for server {} with {} tool callbacks", serverName, toolCallbacks.size());
-        
         return chatClient;
     }
     
@@ -318,20 +364,18 @@ public class McpChatService {
                 Map<String, Object> arguments = objectMapper.readValue(toolInput, Map.class);
                 long afterParse = System.currentTimeMillis();
                 logger.debug("Parsing tool input took {}ms", afterParse - beforeParse);
-                
-                // 쿠키에서 추출한 세션 ID가 있으면 arguments에 자동 추가
-                // MCP 서버의 도구들이 session_id 파라미터를 필요로 할 수 있음
-                String sessionIdFromCookie = currentSessionId.get();
-                if (sessionIdFromCookie != null && !sessionIdFromCookie.trim().isEmpty()) {
-                    // arguments에 session_id가 없으면 추가
-                    if (!arguments.containsKey("session_id") && !arguments.containsKey("sessionId")) {
-                        arguments.put("session_id", sessionIdFromCookie);
-                        logger.info("Auto-added session_id to tool arguments: {}", sessionIdFromCookie);
+                                
+                // access_token 자동 추가 (도구 호출 인증용)
+                String tokenFromRequest = currentAccessToken.get();
+                if (tokenFromRequest != null && !tokenFromRequest.trim().isEmpty()) {
+                    if (!arguments.containsKey("access_token")) {
+                        arguments.put("access_token", tokenFromRequest);
+                        logger.info("Auto-added access_token to tool arguments");
                     } else {
-                        logger.debug("session_id already present in arguments, skipping auto-add");
+                        logger.debug("access_token already present in arguments, skipping auto-add");
                     }
                 } else {
-                    logger.debug("No session_id available from cookie, skipping auto-add");
+                    logger.debug("No access_token available from request, skipping auto-add");
                 }
                 
                 // MCP 서버로 도구 호출

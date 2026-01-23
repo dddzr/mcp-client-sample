@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.messages.AssistantMessage.ToolCall;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
 
@@ -112,17 +114,72 @@ public class GeminiService {
         try {
             logger.info("=== Starting Gemini API call ===");
             
-            String response = chatClient.prompt()
+            // 시스템 프롬프트 추가: 모든 질문에 답변하도록 지시
+            // TODO: AI 모델 변경 테스트,
+            // call() 후 체이닝으로 content() 호출 (Spring AI는 체이닝 방식 사용)
+            String content = null;
+            content = chatClient.prompt()
+                    .system("사용자가 여러 질문을 한 번에 할 수 있습니다. 도구 호출 후 반드시 남은 사용자 질문에 대해 텍스트로 이어서 답변할 것. 도구 호출만 하고 대화를 중단하지 말 것.")
                     .messages(messages)
                     .call()
                     .content();
+
+            // content가 비어있거나 null인 경우 처리
+            if (content == null || content.isBlank()) {
+                logger.warn("Content is empty, trying to get chatResponse");
+                // chatResponse에서 전체 응답 구조 가져오기
+                ChatResponse raw = chatClient.prompt()
+                        .system("""
+                                사용자는 한 메시지에 여러 질문을 할 수 있습니다.
+                                모든 질문에 대해 빠짐없이, 순서대로, 텍스트로 답변해야 합니다.
+                                도구가 필요할 경우 도구를 호출하고, 도구가 필요 없는 질문에는 즉시 답변하십시오.
+                                도구 호출 후에도 남은 질문이 있으면 반드시 이어서 답변하십시오.
+                                절대로 질문을 누락하거나 대화를 수정하거나 우회하지 마십시오.
+                                """)
+                        .messages(messages)
+                        .call()
+                        .chatResponse();
+                logger.info("TEST@ RAW RESPONSE = {}", raw);
+                // ChatResponse에서 텍스트 추출 시도
+                if (raw != null && raw.getResult() != null && raw.getResult().getOutput() != null) {
+                    content = raw.getResult().getOutput().getText();
+                    logger.info("TEST@ CONTENT = {}", content);
+                    List<ToolCall> toolCalls = raw.getResult().getOutput().getToolCalls();
+                    logger.info("TEST@ TOOL CALLS = {}", toolCalls);
+                }
+                
+                if (content == null || content.isBlank()) {
+                    return raw != null ? raw.toString() : "Empty response";
+                }
+            }
             
+            /*
+            ChatResponse resp = chatClient.prompt().messages(messages).call().chatResponse();
+
+            for (Generation gen : resp.getResults()) {
+                AssistantMessage output = (AssistantMessage) gen.getOutput();
+                if (output.getToolCalls() != null) {
+                    // 1) tool 호출
+                    ToolCall tc = output.getToolCalls().get(0);
+                    Object toolResult = callTool(tc);
+                    
+                    // 2) tool 결과를 모델에게 다시 보냄
+                    resp = chatClient.prompt()
+                            .messages(messages)
+                            .messages(new ToolResponseMessage(tc.getId(), toolResult))
+                            .call().chatResponse();
+                }
+            }
+
+            return resp.getContent();
+
+            */
             long afterCall = System.currentTimeMillis();
             long elapsed = afterCall - startTime;
             logger.info("=== Gemini API call completed in {}ms ===", elapsed);
             // logger.debug("Generated response length: {} chars", response != null ? response.length() : 0);
 
-            return response;
+            return content;
         } catch (Exception e) {
             return handleGeminiException(e, "Failed to generate response with custom ChatClient");
         }
