@@ -55,6 +55,35 @@ src/main/java/com/example/mcpclient/
     ├── McpServerSseConnection.java       # SSE 방식 MCP 서버 통신 (SSE 전용)
     └── McpSseClientManager.java          # SSE 클라이언트 연결 관리 (SSE 전용)
 ```
+## TODO: 구조 개선 (2026-11-02 수정)
+
+### 1. MCP 프로토콜 처리를 공식 SDK로 교체
+- [ ] `model/McpRequest`·`McpResponse`·`McpError` → 공식 MCP Java SDK(`io.modelcontextprotocol.sdk:mcp-core`) 객체로 교체
+- [ ] `McpServerStdioConnection`·`McpServerSseConnection`·`McpSseClientManager`·`McpServerConnectionInterface`
+      → SDK `McpClient.sync(transport)` + `StdioClientTransport` / `HttpClientStreamableHttpTransport`로 교체
+- [ ] SSE 전송은 MCP 사양에서 deprecated → Streamable HTTP 지원 추가 (SSE는 구버전 서버용으로만 유지 여부 결정) **2025-03-26 이후 권장 사양 변경됨.**
+- 대안: Spring AI MCP Client 스타터 사용. 단 질문마다 다른 인증 헤더로 연결해야 하면 자동 설정이 맞지 않음
+
+### 2. LLM 연동 분리
+- [ ] `GeminiService` → `LlmClient` 인터페이스 + `GeminiLlmClient` 구현으로 분리
+- [ ] 테스트용 `StubLlmClient` 추가 (LLM 없이 Tool 호출 흐름 테스트)
+- [ ] Tool 호출 모델을 공급자 중립으로: `LlmMessage`, `LlmResponse(text, toolCalls)`, `LlmToolCall(id, name, arguments)`, `ToolSpec(name, description, inputSchema)`
+
+### 3. 보안
+- [ ] `AdminController`(백도어 API) 제거 또는 개발 프로필에서만 활성화
+- [ ] 사용자마다 Tool 목록이 다르므로 `McpServerRegistry`의 도구 목록 캐시를 사용자 단위로 바꾸거나 제거 **(LLM이 권한 없는 도구를 고르지 않게)**
+
+### 4. 사용자 경험 (선택)
+- [ ] 채팅 응답을 SSE 스트리밍으로: `delta`(답변 조각), `tool_start`/`tool_end`(진행 표시), `done`, `error`
+- [ ] Tool 실행 루프를 직접 돌려 Tool 사이에 이벤트·로그를 넣을 수 있게 (확인 필요: 현재 Spring AI 자동 Tool 호출 사용 여부)
+
+### 5. 패키지 구성 (선택)
+- [ ] 계층별(`controller`/`service`/`model`) → 역할별(`chat`/`llm`/`mcp`/`config`)로 재배치 검토
+      — 기능이 늘어날 때만. 지금 규모면 계층별 유지도 무방
+
+### 유지할 것 (범용 데모이므로)
+- 여러 MCP 서버 등록(`McpServerRegistry`, `ServerController`)
+- stdio 전송 지원
 
 
 ## 🔄 MCP Clinet 동작 흐름
